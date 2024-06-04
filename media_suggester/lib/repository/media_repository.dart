@@ -2,11 +2,11 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class MediaRepository {
-  String chaveApi = "api_key";
+  String chaveApi = "chave_api";
 
   final String urlBase = 'https://api.themoviedb.org/3';
 
-  Future<List<dynamic>> getMediaGenero(int generoId, String tipoMedia) async {
+  Future<List<dynamic>> getMediaGenre(int generoId, String tipoMedia) async {
     final String url =
         '$urlBase/discover/$tipoMedia?api_key=$chaveApi&language=pt-BR&with_genres=$generoId&append_to_response=genres';
 
@@ -20,7 +20,7 @@ class MediaRepository {
     }
   }
 
-  Future<List<dynamic>> pesquisarMedia(String pesquisa) async {
+  Future<List<dynamic>> searchMedia(String pesquisa) async {
     final String url =
         '$urlBase/search/multi?api_key=$chaveApi&language=pt-BR&query=$pesquisa';
 

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:media_suggester/pages/escrever_review.dart';
 import 'package:media_suggester/pages/favorito.dart';
+import 'package:media_suggester/pages/review_unica.dart';
 import 'package:media_suggester/repository/media_repository.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
@@ -21,8 +22,8 @@ class Detalhes extends StatefulWidget {
 class _DetalhesState extends State<Detalhes> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
   final MediaRepository _mediaRepository = MediaRepository();
+  late Future<QuerySnapshot<Map<String, dynamic>>> listReviews;
 
   Map<int, String> _generos = {};
 
@@ -35,6 +36,11 @@ class _DetalhesState extends State<Detalhes> {
     _fetchGeneros();
     _favoritado();
     user = _auth.currentUser;
+    listReviews = _firestore
+        .collection('reviews')
+        .limit(10)
+        .where('filmeId', isEqualTo: widget.media["id"].toString())
+        .get();
   }
 
   Future<void> _fetchGeneros() async {
@@ -114,29 +120,10 @@ class _DetalhesState extends State<Detalhes> {
           backgroundColor: Theme.of(context).colorScheme.primary,
           centerTitle: true,
           title: Text(
-            widget.media['title'] ?? widget.media['original_name'],
+            widget.media['title'] ?? widget.media['original_name'] ?? '',
             style: const TextStyle(
                 color: Colors.white, fontWeight: FontWeight.bold),
           ),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Row(
-                children: [
-                  Container(
-                    decoration: const BoxDecoration(
-                        shape: BoxShape.circle, color: Colors.white),
-                    child: IconButton(
-                      onPressed: () {},
-                      icon: Icon(Icons.person,
-                          color: Theme.of(context).colorScheme.secondary),
-                      padding: const EdgeInsetsDirectional.all(8.0),
-                    ),
-                  )
-                ],
-              ),
-            ),
-          ],
           leading: IconButton(
             onPressed: () {
               Navigator.pop(context);
@@ -149,7 +136,7 @@ class _DetalhesState extends State<Detalhes> {
             children: [
               Stack(children: [
                 Container(
-                  width: 400,
+                  width: 450,
                   height: 260,
                   child: Image(
                     image: NetworkImage(
@@ -169,7 +156,8 @@ class _DetalhesState extends State<Detalhes> {
                           ElevatedButton(
                             onPressed: () {
                               _favoritar(widget.media['title'] ??
-                                  widget.media['original_name']);
+                                  widget.media['original_name'] ??
+                                  '');
                             },
                             style: ElevatedButton.styleFrom(
                                 backgroundColor:
@@ -217,7 +205,9 @@ class _DetalhesState extends State<Detalhes> {
                 child: Column(
                   children: [
                     Text(
-                      widget.media['title'] ?? widget.media['original_name'],
+                      widget.media['title'] ??
+                          widget.media['original_name'] ??
+                          '',
                       maxLines: 2,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
@@ -232,12 +222,12 @@ class _DetalhesState extends State<Detalhes> {
                     ),
                     Wrap(
                       alignment: WrapAlignment.center,
-                      spacing: 8, // Espaçamento entre os gêneros
+                      spacing: 6, // Espaçamento entre os gêneros
                       runSpacing: 8, // Espaçamento entre as linhas
                       children: [
-                        for (var genreId in widget.media['genre_ids'])
+                        for (var genero in widget.media['genre_ids'])
                           Text(
-                            '${_generos[genreId] ?? ''}',
+                            '| ${_generos[genero] ?? ''} |',
                             style: const TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
@@ -255,7 +245,7 @@ class _DetalhesState extends State<Detalhes> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                'Criticos',
+                                'Críticos',
                                 style: TextStyle(
                                     fontSize: 18, fontWeight: FontWeight.bold),
                               ),
@@ -267,7 +257,7 @@ class _DetalhesState extends State<Detalhes> {
                               ),
                               SizedBox(width: 16),
                               Text(
-                                'Usuarios',
+                                'Usuários',
                                 style: TextStyle(
                                     fontSize: 18, fontWeight: FontWeight.bold),
                               ),
@@ -298,10 +288,14 @@ class _DetalhesState extends State<Detalhes> {
                     const SizedBox(
                       height: 15,
                     ),
-                    Text(
-                      widget.media['overview'],
-                      style: const TextStyle(fontSize: 20),
-                      maxLines: 11,
+                    Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Text(
+                        widget.media['overview'],
+                        style: const TextStyle(fontSize: 20),
+                        textAlign: TextAlign.justify,
+                        maxLines: 11,
+                      ),
                     ),
                   ],
                 ),
@@ -329,7 +323,8 @@ class _DetalhesState extends State<Detalhes> {
                       children: [
                         GestureDetector(
                           onTap: () {
-                            _procurarGoogle(widget.media['title']);
+                            _procurarGoogle(widget.media['title'] ??
+                                widget.media['original_name']);
                           },
                           child: Container(
                             width: 60,
@@ -362,13 +357,34 @@ class _DetalhesState extends State<Detalhes> {
                   ),
                 ],
               ),
-              CarouselSlider(
-                items: _obterComentarios(context),
-                options: CarouselOptions(
-                  aspectRatio: 2.0,
-                  enlargeCenterPage: true,
-                  pageViewKey: const PageStorageKey<String>('carousel_slider'),
-                ),
+              FutureBuilder(
+                future: listReviews,
+                builder: (context, snapshot) {
+                  switch (snapshot.connectionState) {
+                    case ConnectionState.none:
+                    case ConnectionState.waiting:
+                      return Container(
+                        width: 200.0,
+                        height: 200.0,
+                        alignment: Alignment.center,
+                        child: const CircularProgressIndicator(
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.black),
+                          strokeWidth: 5.0,
+                        ),
+                      );
+                    default:
+                      return CarouselSlider(
+                        items: _obterComentarios(context, snapshot),
+                        options: CarouselOptions(
+                          aspectRatio: 2.0,
+                          enlargeCenterPage: true,
+                          pageViewKey:
+                              const PageStorageKey<String>('carousel_slider'),
+                        ),
+                      );
+                  }
+                },
               ),
               const SizedBox(
                 height: 15,
@@ -389,78 +405,131 @@ class _DetalhesState extends State<Detalhes> {
     }
   }
 
-  _obterComentarios(BuildContext context) {
-    final List<String> comments = [
-      "Um filme emocionante que prende sua atenção do início ao fim...",
-      "Uma obra-prima cinematográfica que cativa com sua narrativa envolvente...",
-      "Um filme repleto de ação que entrega adrenalina do começo ao fim...",
-      "Uma comédia hilária que garante gargalhadas do público, com piadas...",
-      "Um drama emocionante que explora temas profundos e complexos..."
-    ];
+  _obterComentarios(BuildContext context, AsyncSnapshot snapshot) {
+    List<dynamic> listReviewsTemp = [];
+    List<Widget> widgets = [];
+    try {
+      listReviewsTemp = snapshot.data.docs;
+    } catch (e) {
+      widgets.add(Container());
+      return widgets;
+    }
 
-    final List<Widget> commentSlider = comments.map((comment) {
-      return Builder(
-        builder: (BuildContext context) {
-          return Container(
-            width: MediaQuery.of(context).size.width,
-            margin: const EdgeInsets.only(top: 30),
-            decoration: BoxDecoration(
-              color: const Color.fromARGB(255, 42, 42, 42),
-              borderRadius: BorderRadius.circular(4.0),
-            ),
-            child: Column(
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(10.0),
-                  child: Row(
-                    children: [
-                      Image(
-                        image:
-                            AssetImage("assets/images/profile_placeholder.png"),
-                        height: 45,
-                        width: 45,
-                      ),
-                      SizedBox(
-                        width: 15,
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "Jane Doe",
-                            style: TextStyle(fontSize: 20),
-                          ),
-                          Text(
-                            "★★★★☆",
-                            style: TextStyle(fontSize: 20),
-                          )
-                        ],
-                      ),
-                      Spacer(), // Adiciona um espaçamento flexível
-                      Text(
-                        "01/04/2024", // Sua data aqui
-                        style: TextStyle(fontSize: 16),
-                      )
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(left: 8, right: 8),
-                  child: Text(
-                    comment,
-                    style: const TextStyle(
-                      fontSize: 20.0,
-                    ),
-                    maxLines: 2,
-                  ),
-                ),
-              ],
-            ),
-          );
+    for (final review in listReviewsTemp) {
+      String nota = "";
+      for (var i = 0; i < review['nota']; i++) {
+        nota += "★";
+      }
+      nota = nota.padRight(5, "☆");
+
+      widgets.add(GestureDetector(
+        onTap: () {
+          Navigator.push(context,
+              MaterialPageRoute(builder: (context) => ReviewUnica(review)));
         },
-      );
-    }).toList();
+        child: Builder(
+          builder: (BuildContext context) {
+            return Container(
+              width: MediaQuery.of(context).size.width - 30,
+              margin: const EdgeInsets.only(top: 30),
+              decoration: BoxDecoration(
+                color: const Color.fromARGB(255, 42, 42, 42),
+                borderRadius: BorderRadius.circular(4.0),
+              ),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(10.0),
+                    child: Row(
+                      children: [
+                        FutureBuilder(
+                            future: review['user'].get(),
+                            builder: (context, snapshot) {
+                              switch (snapshot.connectionState) {
+                                case ConnectionState.none:
+                                case ConnectionState.waiting:
+                                  return const Image(
+                                    image: AssetImage(
+                                        "assets/images/profile_placeholder.png"),
+                                    height: 45,
+                                    width: 45,
+                                  );
+                                default:
+                                  return Image(
+                                    image: NetworkImage(
+                                        (snapshot.data as DocumentSnapshot)
+                                            .get("photoUrl")),
+                                    height: 45,
+                                    width: 45,
+                                  );
+                              }
+                            }),
 
-    return commentSlider;
+                        const SizedBox(
+                          width: 15,
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            FutureBuilder(
+                                future: review['user'].get(),
+                                builder: (context, snapshot) {
+                                  switch (snapshot.connectionState) {
+                                    case ConnectionState.none:
+                                    case ConnectionState.waiting:
+                                      return Container(
+                                        color: Colors.white,
+                                        height: 12,
+                                        width: 50,
+                                      );
+                                    default:
+                                      return Text(
+                                          (snapshot.data as DocumentSnapshot)
+                                              .get("name"),
+                                          style: const TextStyle(
+                                              fontSize: 20,
+                                              fontWeight: FontWeight.bold));
+                                  }
+                                }),
+                            Text(
+                              nota,
+                              style: const TextStyle(fontSize: 20),
+                            ),
+                            Text(
+                              review['descricao'],
+                              style: const TextStyle(
+                                fontSize: 20.0,
+                              ),
+                              textAlign: TextAlign.start,
+                              maxLines: 2,
+                            ),
+                          ],
+                        ),
+                        const Spacer(), // Adiciona um espaçamento flexível
+                        Column(
+                          children: [
+                            Text(
+                              DateFormat('dd/MM/yy\nHH:mm').format(
+                                  DateTime.fromMicrosecondsSinceEpoch(
+                                      review['criacao']
+                                          .microsecondsSinceEpoch)),
+                              style: const TextStyle(fontSize: 16),
+                              textAlign: TextAlign.end,
+                            ),
+                            const Text(""),
+                            const Text(""),
+                          ],
+                        )
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ));
+    }
+    return widgets;
   }
 }
