@@ -37,4 +37,4 @@ EXPOSE 9000
 # make server startup script executable and start the web server
 RUN ["chmod", "+x", "/app/server/server.sh"]
 
-ENTRYPOINT [ "/app/server/server.sh"]
+ENTRYPOINT ["bash", "/app/server/server.sh"]
