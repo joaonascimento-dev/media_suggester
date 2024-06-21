@@ -1,10 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:media_suggester/models/Suggestion.dart';
 import 'package:media_suggester/pages/Detalhes.dart';
+import 'package:media_suggester/pages/genre_movie.dart';
 import 'package:media_suggester/pages/perfil.dart';
 import 'package:media_suggester/pages/pesquisa.dart';
 import 'package:media_suggester/pages/reviews.dart';
@@ -17,7 +17,7 @@ import '../models/Midia.dart';
 class Home extends StatefulWidget {
   Home(this.user, {super.key});
 
-  User? user;
+  User user;
 
   @override
   State<Home> createState() => _HomeState(user);
@@ -27,14 +27,27 @@ class _HomeState extends State<Home> {
   final MediaRepository _mediaRepository = MediaRepository();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   Widget? _body;
+  Image _carregandoImagem = Image(
+      image: AssetImage("assets/images/carregando-dados.png"),
+      height: 400,
+      width: 200);
+  String _carregandoTexto = "Carregando dados, por favor aguarde...";
 
   _HomeState(this.user);
 
-  User? user;
+  User user;
 
   @override
   void initState() {
     super.initState();
+    //Verificando se usuário já tem preferências, para poder redirecionar
+    // no caso de não ter e ter entrado direto na home por algum motivo
+    verificarPreferencia(user.uid).then((value) {
+      if (!value) {
+        Navigator.push(
+            context, MaterialPageRoute(builder: (context) => Genre_movie()));
+      }
+    });
     carregarSugestoes(user);
   }
 
@@ -43,6 +56,14 @@ class _HomeState extends State<Home> {
       Suggestion sugestoes;
       verificarExisteRecomendacoes(user!.uid).then((value) async {
         if (!value) {
+          setState(() {
+            _carregandoImagem = Image(
+                image: AssetImage("assets/images/carregando-sugestoes.png"),
+                height: 500,
+                width: 400);
+            _carregandoTexto =
+                "Por favor aguarde enquanto geramos recomendações especiais para você...";
+          });
           //aqui eu trago do banco as preferencias
           DocumentSnapshot preferences = await FirebaseFirestore.instance
               .collection("preferences")
@@ -59,25 +80,37 @@ class _HomeState extends State<Home> {
           SuggestionRepository suggestionRepository =
               new SuggestionRepository();
 
-          List<dynamic>? sugestoes_series =
-              await suggestionRepository.GerarSugestoes("series",
-                  preferencias_series.map((serie) => serie['name']).join(', '));
+          List<dynamic> sugestoes_series =
+              await suggestionRepository.GerarSugestoes(
+                      "series",
+                      preferencias_series
+                          .map((serie) => serie['name'])
+                          .join(', ')) ??
+                  [];
           print(sugestoes_series);
 
-          List<dynamic>? sugestoes_filmes =
-              await suggestionRepository.GerarSugestoes("filmes",
-                  preferencias_filmes.map((filme) => filme['name']).join(', '));
+          List<dynamic> sugestoes_filmes =
+              await suggestionRepository.GerarSugestoes(
+                      "filmes",
+                      preferencias_filmes
+                          .map((filme) => filme['name'])
+                          .join(', ')) ??
+                  [];
           print(sugestoes_filmes);
 
           //verificando se as mídias recomendadas existem na api do themoviedb
 
           List<SugestoesPorGenero>? sugestoesSeriesValidadas =
               await verificarSeApiPossuiDadosDasSugestoesGeradas(
-                  sugestoes_series!, preferencias_series, "tv");
+                  sugestoes_series, preferencias_series, "tv");
 
           List<SugestoesPorGenero>? sugestoesFilmesValidadas =
               await verificarSeApiPossuiDadosDasSugestoesGeradas(
-                  sugestoes_filmes!, preferencias_filmes, "movie");
+                  sugestoes_filmes, preferencias_filmes, "movie");
+
+          setState(() {
+            _carregandoTexto = "Quase lá...";
+          });
 
           List<Map<String, dynamic>> sugestoesFilmesFormatadasParaRegistro =
               await formatarParaFirestore(sugestoesFilmesValidadas);
@@ -102,7 +135,7 @@ class _HomeState extends State<Home> {
         } else {
           DocumentSnapshot suggestionSnapshot = await FirebaseFirestore.instance
               .collection("suggestions")
-              .doc(user!.uid)
+              .doc(user.uid)
               .get();
 
           sugestoes = Suggestion.fromDocumentSnapshot(suggestionSnapshot);
@@ -131,7 +164,7 @@ class _HomeState extends State<Home> {
           SugestoesPorGenero.fromJsonList(sugestoesGeradas);
 
       for (SugestoesPorGenero listaSugestoes in sugestoesPorGenero) {
-        List<Midia> midiasDoGenero = []; // Inicialize a lista aqui
+        List<Midia> midiasDoGenero = [];
         for (Midia midia in listaSugestoes.midias) {
           var midias = await _mediaRepository.searchMedia(midia.titulo!);
           if (midias.isNotEmpty) {
@@ -142,8 +175,9 @@ class _HomeState extends State<Home> {
                         m['name'] == midia.titulo ||
                         m['original_name'] == midia.titulo) &&
                     m['media_type'] == tipoMidia &&
-                    !midiasAdicionadas.contains(m["id"]) &&
-                    m["poster_path"] != null, //não repetir mídias,
+                    !midiasAdicionadas
+                        .contains(m["id"]) && //para não repetir mídias
+                    m["poster_path"] != null,
                 orElse: () => null);
             if (m != null) {
               midiasDoGenero.add(Midia(
@@ -211,7 +245,6 @@ class _HomeState extends State<Home> {
   Future<Widget?> _carregarMedias(Suggestion? sugestoes) async {
     try {
       if (sugestoes == null) return SizedBox.shrink();
-      // Carrega os filmes em lotes
       int filmeIndex = 0;
       const int filmesBatchSize = 10;
       List<Map<String, dynamic>> postersFilmes = [];
@@ -253,7 +286,6 @@ class _HomeState extends State<Home> {
         filmesBatch.clear();
       }
 
-      // Carrega as séries em lotes
       int serieIndex = 0;
       const int seriesBatchSize = 10;
       List<Map<String, dynamic>> postersSeries = [];
@@ -304,7 +336,6 @@ class _HomeState extends State<Home> {
         var generosSeries =
             await _mediaRepository.fetchGeneros(firstAirDate: "123");
 
-        // Iterar sobre os mapas de gêneros
         for (var midiasDoGenero in sugestoes.filmes) {
           midiasDoGenero.forEach((key, value) {
             List<Widget> midias = [];
@@ -322,7 +353,6 @@ class _HomeState extends State<Home> {
 
             var nomeGenero = generosFilmes[int.parse(key)];
 
-            //Criar um carrousel para as mídias do gênero
             var carrouselFilme = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -368,7 +398,6 @@ class _HomeState extends State<Home> {
 
             var nomeGenero = generosSeries[int.parse(key)];
 
-            //Criar um carrousel para as mídias do gênero
             var carrouselSerie = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -401,7 +430,6 @@ class _HomeState extends State<Home> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Seção de Filmes
               const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -416,9 +444,31 @@ class _HomeState extends State<Home> {
                 ],
               ),
               SizedBox(height: 16.0),
-              ...filmesWidgets,
+              filmesWidgets.isNotEmpty
+                  ? Column(children: filmesWidgets)
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Column(
+                          children: [
+                            Text(
+                              "Não encontramos nada...",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w400,
+                                fontSize: 20,
+                              ),
+                            ),
+                            Image(
+                                image: AssetImage(
+                                    'assets/images/nenhum-dado-encontrado.png'),
+                                height: 300,
+                                width: 300)
+                          ],
+                        ),
+                      ],
+                    ),
+              //...filmesWidgets,
               SizedBox(height: 64.0),
-              // Seção de Séries
               const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -431,7 +481,31 @@ class _HomeState extends State<Home> {
                 ],
               ),
               SizedBox(height: 16.0),
-              ...seriesWidgets,
+              seriesWidgets.isNotEmpty
+                  ? Column(children: seriesWidgets)
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Column(
+                          children: [
+                            Text(
+                              "Não encontramos nada...",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w400,
+                                fontSize: 20,
+                              ),
+                            ),
+                            Image(
+                                image: AssetImage(
+                                    'assets/images/nenhum-dado-encontrado.png'),
+                                height: 300,
+                                width: 300)
+                          ],
+                        ),
+                      ],
+                    ),
+              //...seriesWidgets,
+              SizedBox(height: 32.0),
             ],
           ),
         );
@@ -513,14 +587,22 @@ class _HomeState extends State<Home> {
         height: MediaQuery.of(context).size.height -
             kToolbarHeight -
             kBottomNavigationBarHeight,
-        child: _body == null
-            ? Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                ],
-              )
-            : _body,
+        child: _body ??
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _carregandoImagem,
+                Text(
+                  _carregandoTexto,
+                  style: TextStyle(fontSize: 20),
+                  textAlign: TextAlign.center,
+                ),
+                Padding(
+                  padding: EdgeInsets.only(top: 10, left: 25, right: 25),
+                  child: LinearProgressIndicator(minHeight: 15),
+                )
+              ],
+            ),
       ),
       extendBody: true,
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
@@ -610,9 +692,15 @@ class _HomeState extends State<Home> {
     }
   }
 
-  _carregarMidia(String id, String endpoint) async {
-    Map<String, dynamic> midia =
-        await _mediaRepository.getMidia(id, endpoint) as Map<String, dynamic>;
-    return midia;
+  static Future<bool> verificarPreferencia(String userId) async {
+    try {
+      DocumentSnapshot user = await FirebaseFirestore.instance
+          .collection("preferences")
+          .doc(userId)
+          .get();
+      return user.exists;
+    } catch (e) {
+      return false;
+    }
   }
 }

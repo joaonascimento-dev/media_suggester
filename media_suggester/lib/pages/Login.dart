@@ -27,7 +27,7 @@ class _LoginState extends State<Login> {
       if (loggedIn) {
         // Se o usuário já está logado, redirecionar para a página Home
         Navigator.pushReplacement(context,
-            MaterialPageRoute(builder: (context) => Home(_auth.currentUser)));
+            MaterialPageRoute(builder: (context) => Home(_auth.currentUser!)));
       }
     });
   }
@@ -86,7 +86,7 @@ class _LoginState extends State<Login> {
               ? Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
-                      builder: (context) => Home(_auth.currentUser)))
+                      builder: (context) => Home(_auth.currentUser!)))
               : Navigator.push(context,
                   MaterialPageRoute(builder: (context) => Genre_movie()));
         });
@@ -181,12 +181,8 @@ class _LoginState extends State<Login> {
           .collection("preferences")
           .doc(userId)
           .get();
-      //.where("token_google", isEqualTo: "12345x")
-      // Se houver documentos encontrados, retorna true
-      print(user.exists);
       return user.exists;
     } catch (e) {
-      // Em caso de erro, retorna false
       return false;
     }
   }

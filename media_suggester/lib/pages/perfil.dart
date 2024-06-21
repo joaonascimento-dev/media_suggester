@@ -7,6 +7,7 @@ import 'package:media_suggester/pages/favorito.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:media_suggester/repository/media_repository.dart';
+import 'package:media_suggester/pages/Login.dart'; // Certifique-se de importar a página de login
 
 class Perfil extends StatelessWidget {
   Perfil({super.key});
@@ -14,18 +15,14 @@ class Perfil extends StatelessWidget {
   final User? user = FirebaseAuth.instance.currentUser;
   final MediaRepository mediaRepository = MediaRepository();
 
-  /*Future<Map<String, dynamic>> _getUserData() async {
-    if (user != null) {
-      DocumentSnapshot userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user!.uid)
-          .get();
-      if (userDoc.exists) {
-        return userDoc.data() as Map<String, dynamic>;
-      }
+  Future<bool> signOutFromGoogle() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      return true;
+    } on Exception catch (_) {
+      return false;
     }
-    return {};
-  }*/
+  }
 
   Future<List<dynamic>> _fetchFavoritos(String userId) async {
     List<String> favoritos = [];
@@ -101,6 +98,14 @@ class Perfil extends StatelessWidget {
               .doc(user?.uid)
               .snapshots(),
             builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (!snapshot.hasData || snapshot.hasError) {
+              return const Center(child: Text("Erro ao carregar dados do usuário"));
+            }
+
             var userData = snapshot.data!.data() as Map<String, dynamic>;
             return SingleChildScrollView(
               child: Container(
@@ -179,6 +184,34 @@ class Perfil extends StatelessWidget {
                         ),
                         child: Text(
                           'ALTERAR DADOS',
+                          style: TextStyle(
+                              fontSize: 16,
+                              color:
+                                  Theme.of(context).colorScheme.inversePrimary),
+                        ),
+                      ),
+                    ),
+                    Container(
+                      margin: const EdgeInsets.only(top: 16, bottom: 16),
+                      width: 250,
+                      height: 40,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          bool result = await signOutFromGoogle();
+                          if (result) {
+                            Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(builder: (context) => Login()), // Substitua com sua página de login
+                              (Route<dynamic> route) => false,
+                            );
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor:
+                              Theme.of(context).colorScheme.secondary,
+                        ),
+                        child: Text(
+                          'LOGOUT',
                           style: TextStyle(
                               fontSize: 16,
                               color:
